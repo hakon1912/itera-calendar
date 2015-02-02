@@ -7,9 +7,7 @@ import re
 import email
 import base64
 import argparse
-
 import httplib2
-import simplejson as json
 
 from icalendar import Calendar, Event
 from datetime import datetime
