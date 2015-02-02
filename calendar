@@ -173,43 +173,9 @@ class GCal:
         else:
             print "Found more than one event with summary '%s'. Neither updating nor creating a new event!" % event['body']['summary']
 
-    #def _cancel_gcal_event(self, event):
-        #event_list = self._find_gcal_events(lambda ev: ev.get('summary', '') == event['body']['summary'])
-
-        #if event_list is None:
-            #self._calendar_not_found()
-            #return
-
-        #if len(event_list) != -1:
-            #print "Could not find a calendar event with summary '%s'" % event['body']['summary']
-            #return
-
-        #event_found = event_matches[0]
-        #event_found['summary'] = '%s: %s' % (event['body']['status'].title(), event_found['summary'])
-        #event_found['status'] = event['body']['status']
-
-        #obj = dictmerge({
-                #'calendarId': calendar_obj['id'],
-                #'eventId': event_found['id']
-            #}, { 'body': event_found })
-
-        #self._service.events().update(**obj).execute()
-
-        #print "deleted event '%s'!" % event_found['body']['status']
-
     def handle_event(self, raw_ical):
-        #def match(ev, pattern):
-            #return re.match(pattern, ev['body']['status'].lower(), flags=re.IGNORECASE)
-
         for event in self._extract_ical_data(raw_ical):
             self._create_or_update_gcal_event(event)
-
-            #if match(event, r'^(confirmed|tentative)$'):
-                #self._create_or_update_gcal_event(event)
-            #elif match(event, r'^cancell?ed$'):
-                #self._cancel_gcal_event(event)
-            #else:
-                #print "I don't know how to handle status '%s'!" % event['body']['status']
 
 class EMailParser:
     def __init__(self, fd):
