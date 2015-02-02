@@ -1,0 +1,245 @@
+#!/usr/bin/env python
+# -*- coding: utf-8
+
+from sys import stdin, stdout, argv
+from os import path
+import re
+import email
+import base64
+
+import httplib2
+import simplejson as json
+
+from icalendar import Calendar, Event
+from datetime import datetime
+
+from oauth2client.client import flow_from_clientsecrets
+from oauth2client.file import Storage
+from apiclient.discovery import build
+
+import logging
+logging.basicConfig()
+
+
+def dictmerge(*args):
+    res = {}
+    for d in args:
+        for (k,v) in d.iteritems():
+            res[k] = v
+    return res
+
+class GCal:
+    def __init__(self, *args, **kwargs):
+        base_dir = path.expanduser('~/bin/calendar/')
+
+        self.calendar_name           = kwargs.get('calendar_name', 'Jobb')
+        self.credential_storage_file = kwargs.get('credential_storage_file', base_dir + 'client_credentials_storage.json')
+        self.client_secrets_file     = kwargs.get('client_secrets_file', base_dir +'/client_secrets.json')
+
+        self._credentials = self._login()
+        self._service = build('calendar', 'v3', http=self._credentials.authorize(httplib2.Http()))
+
+        self._tz = 'Europe/Oslo'
+
+    def _login(self):
+        storage = Storage(self.credential_storage_file)
+
+        flow = flow_from_clientsecrets(self.client_secrets_file,
+            scope='https://www.googleapis.com/auth/calendar',
+            redirect_uri='https://www.hwikene.net/oauth2callback')
+
+        creds = storage.get()
+
+        # first time authentication
+        if creds is None:
+            print "This is your first time using this application, so you will"
+            print "have to give it permission to access your calendar first."
+
+            auth_uri = flow.step1_get_authorize_url()
+
+            print auth_uri
+            print "Click the link and paste the code found in the return URL here:",
+
+            code = stdin.readline().strip()
+
+            creds = flow.step2_exchange(code)
+            storage.put(creds)
+
+        # refresh an old access token
+        elif creds.access_token_expired:
+
+            print "Access token expired, trying to refresh"
+
+            creds.refresh(httplib2.Http())
+
+            storage.put(creds)
+            return creds
+
+        # should still be valid
+        else:
+            print "Token still valid, using stored access token"
+
+        return creds
+
+    def _extract_ical_data(self, raw_ical):
+        cal = Calendar.from_ical(raw_ical)
+        for event in cal.walk('vevent'):
+            yield {
+                'body': {
+                    'summary': event.get('summary').title(),
+                    'description': unicode(event.get('description')),
+                    'start': { 'dateTime' : event.get('dtstart').dt.isoformat(), 'timeZone': self._tz },
+                    'end': { 'dateTime': event.get('dtend').dt.isoformat(), 'timeZone': self._tz },
+                    'location': event.get('location').title(),
+                    'status': event.get('status').lower()
+                }
+            }
+
+    def _find_calendar_by_name(self):
+        items = self._service.calendarList().list().execute()['items']
+        items_filtered = [e for e in items if e['summary'] == self.calendar_name]
+
+        if len(items_filtered) != 1:
+            return None
+
+        return items_filtered[0]
+
+    def _calendar_not_found(self):
+        items = self._service.calendarList().list().execute()['items']
+
+        print "Could not find a calendar with the name '%s'. Your options are: %s" % (
+            self.calendar_name, ', '.join([e['summary'] for e in items]))
+
+    def _find_gcal_events(self, filter_func):
+        calendar_obj = self._find_calendar_by_name()
+
+        if calendar_obj is None:
+            self._calendar_not_found()
+            return None
+
+        event_list = self._service.events().list(calendarId=calendar_obj['id']).execute()
+        return [e for e in event_list['items'] if filter_func(e)]
+
+    def _create_gcal_event(self, event):
+        calendar_obj = self._find_calendar_by_name()
+
+        if calendar_obj is None:
+            self._calendar_not_found()
+            return
+
+        data = dictmerge({ 'calendarId': calendar_obj['id'] }, event)
+        self._service.events().insert(**data).execute()
+
+        print "Created event '%s'" % event['body']['summary']
+
+    def _update_gcal_event(self, found_event, new_event_data):
+
+        def merge_properties(new_obj, old_obj):
+            for key in new_obj.keys():
+                if not key in old_obj:
+                    continue
+
+                if isinstance(new_obj[key], dict):
+                    merge_properties(new_obj[key], old_obj[key])
+                elif isinstance(new_obj[key], str):
+                    new_obj[key] = old_obj[key]
+
+            return new_obj
+
+        calendar_obj = self._find_calendar_by_name()
+
+        if calendar_obj is None:
+            self._calendar_not_found()
+            return
+
+        merged = merge_properties(found_event, new_event_data['body'])
+
+        obj = dictmerge({
+                'calendarId': calendar_obj['id'],
+                'eventId': found_event['id']
+            }, { 'body': merged })
+
+        self._service.events().update(**obj).execute()
+
+        print "Updated event '%s'" % merged['summary']
+
+    def _create_or_update_gcal_event(self, event):
+        found = self._find_gcal_events(lambda ev: ev.get('summary', '') == event['body']['summary'])
+
+        if len(found) == 1:
+            self._update_gcal_event(found[0], event)
+        elif len(found) == 0:
+            self._create_gcal_event(event)
+        else:
+            print "Found more than one event with summary '%s'. Neither updating nor creating a new event!" % event['body']['summary']
+
+    #def _cancel_gcal_event(self, event):
+        #event_list = self._find_gcal_events(lambda ev: ev.get('summary', '') == event['body']['summary'])
+
+        #if event_list is None:
+            #self._calendar_not_found()
+            #return
+
+        #if len(event_list) != -1:
+            #print "Could not find a calendar event with summary '%s'" % event['body']['summary']
+            #return
+
+        #event_found = event_matches[0]
+        #event_found['summary'] = '%s: %s' % (event['body']['status'].title(), event_found['summary'])
+        #event_found['status'] = event['body']['status']
+
+        #obj = dictmerge({
+                #'calendarId': calendar_obj['id'],
+                #'eventId': event_found['id']
+            #}, { 'body': event_found })
+
+        #self._service.events().update(**obj).execute()
+
+        #print "deleted event '%s'!" % event_found['body']['status']
+
+    def handle_event(self, raw_ical):
+        #def match(ev, pattern):
+            #return re.match(pattern, ev['body']['status'].lower(), flags=re.IGNORECASE)
+
+        for event in self._extract_ical_data(raw_ical):
+            self._create_or_update_gcal_event(event)
+
+            #if match(event, r'^(confirmed|tentative)$'):
+                #self._create_or_update_gcal_event(event)
+            #elif match(event, r'^cancell?ed$'):
+                #self._cancel_gcal_event(event)
+            #else:
+                #print "I don't know how to handle status '%s'!" % event['body']['status']
+
+class EMailParser:
+    def __init__(self, fd):
+        self._file = fd
+
+    def parse(self):
+        self._email = email.message_from_file(self._file)
+        return self._email
+
+    def walk_calendar_events(self, callback):
+        for part in self._email.walk():
+            if part.get_content_type() == 'text/calendar':
+                if part['Content-Transfer-Encoding'] == 'base64':
+                    callback(base64.b64decode(part.get_payload()))
+                else:
+                    callback(part.get_payload())
+
+
+if __name__ == '__main__':
+    cal = GCal()
+
+    if len(argv) == 2 and path.exists(argv[1]):
+        mail = EMailParser(open(argv[1], 'r'))
+    elif len(argv) == 2:
+        print "File '%s' does not exist!" % argv[1]
+        exit(1)
+    else:
+        mail = EMailParser(stdin)
+
+    mail.parse()
+    mail.walk_calendar_events(cal.handle_event)
+
+    exit(0)
