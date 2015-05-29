@@ -31,7 +31,7 @@ class GCal:
     DEFAULT_BASE_PATH        = '.'
     DEFAULT_CALENDAR_NAME    = 'Jobb'
     DEFAULT_CREDENTIALS_FILE = 'client_credentials_storage.json'
-    DEFAULT_SECRETS_FILE     = 'client_secrets'
+    DEFAULT_SECRETS_FILE     = 'client_secrets.json'
 
     def __init__(self, *args, **kwargs):
         base_dir = path.expanduser(kwargs.get('base_path', GCal.DEFAULT_BASE_PATH))
@@ -203,6 +203,7 @@ def cmdline_args():
     parser = argparse.ArgumentParser(description='Extract calendar events from emails and put into Google Calendar.')
     parser.add_argument('-p', '--path', default='~/.itera_calendar/',
         help='The path where the script looks for credentials files. Defaults to ~/.itera_calendar/')
+    parser.add_argument('file', type=str, nargs='?', default=None, help='A raw email file to read')
 
     return parser.parse_args()
 
@@ -211,10 +212,10 @@ if __name__ == '__main__':
     args = cmdline_args()
     cal = GCal(base_path=args.path)
 
-    if len(argv) == 2 and path.exists(argv[1]):
-        mail = EMailParser(open(argv[1], 'r'))
+    if args.file is not None and path.exists(args.file):
+        mail = EMailParser(open(args.file, 'r'))
     elif len(argv) == 2:
-        print "File '%s' does not exist!" % argv[1]
+        print "File '%s' does not exist!" % args.file
         exit(1)
     else:
         mail = EMailParser(stdin)
