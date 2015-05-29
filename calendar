@@ -86,17 +86,24 @@ class GCal:
         return creds
 
     def _extract_ical_data(self, raw_ical):
+
+        def get_rrules(ev):
+            if ev.get('rrule'):
+                return [ 'RRULE:' + ev.get('rrule').to_ical() ]
+            return []
+
         cal = Calendar.from_ical(raw_ical)
         for event in cal.walk('vevent'):
             yield {
                 'body': {
                     'summary': event.get('summary').title(),
                     'description': unicode(event.get('description')),
-                    'start': { 'dateTime' : event.get('dtstart').dt.isoformat(), 'timeZone': self._tz },
-                    'end': { 'dateTime': event.get('dtend').dt.isoformat(), 'timeZone': self._tz },
+                    'start': { 'dateTime' : event.get('dtstart').dt.strftime('%Y-%m-%dT%H:%M:%S'), 'timeZone': self._tz },
+                    'end': { 'dateTime': event.get('dtend').dt.strftime('%Y-%m-%dT%H:%M:%S'), 'timeZone': self._tz },
                     'location': event.get('location').title(),
                     'status': event.get('status').lower(),
-                    'id': event.get('uid').lower()
+                    'id': event.get('uid').lower(),
+                    'recurrence': get_rrules(event)
                 }
             }
 
