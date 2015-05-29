@@ -95,7 +95,8 @@ class GCal:
                     'start': { 'dateTime' : event.get('dtstart').dt.isoformat(), 'timeZone': self._tz },
                     'end': { 'dateTime': event.get('dtend').dt.isoformat(), 'timeZone': self._tz },
                     'location': event.get('location').title(),
-                    'status': event.get('status').lower()
+                    'status': event.get('status').lower(),
+                    'id': event.get('uid').lower()
                 }
             }
 
@@ -168,7 +169,7 @@ class GCal:
         print "Updated event '%s'" % merged['summary']
 
     def _create_or_update_gcal_event(self, event):
-        found = self._find_gcal_events(lambda ev: ev.get('summary', '') == event['body']['summary'])
+        found = self._find_gcal_events(lambda ev: ev.get('id', '') == event['body']['id'])
 
         if len(found) == 1:
             self._update_gcal_event(found[0], event)
