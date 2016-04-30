@@ -102,7 +102,7 @@ class GCal:
                     'end': { 'dateTime': event.get('dtend').dt.strftime('%Y-%m-%dT%H:%M:%S'), 'timeZone': self._tz },
                     'location': event.get('location').title(),
                     'status': event.get('status').lower(),
-                    'id': event.get('uid').lower(),
+                    'id': event.get('uid').replace('-', '').lower(),
                     'recurrence': get_rrules(event)
                 }
             }
