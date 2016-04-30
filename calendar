@@ -15,6 +15,7 @@ from datetime import datetime
 from oauth2client.client import flow_from_clientsecrets
 from oauth2client.file import Storage
 from apiclient.discovery import build
+from apiclient.errors import HttpError
 
 import logging
 logging.basicConfig()
@@ -122,16 +123,6 @@ class GCal:
         print "Could not find a calendar with the name '%s'. Your options are: %s" % (
             self.calendar_name, ', '.join([e['summary'] for e in items]))
 
-    def _find_gcal_events(self, filter_func):
-        calendar_obj = self._find_calendar_by_name()
-
-        if calendar_obj is None:
-            self._calendar_not_found()
-            return None
-
-        event_list = self._service.events().list(calendarId=calendar_obj['id']).execute()
-        return [e for e in event_list['items'] if filter_func(e)]
-
     def _create_gcal_event(self, event):
         calendar_obj = self._find_calendar_by_name()
 
@@ -176,14 +167,23 @@ class GCal:
         print "Updated event '%s'" % merged['summary']
 
     def _create_or_update_gcal_event(self, event):
-        found = self._find_gcal_events(lambda ev: ev.get('id', '') == event['body']['id'])
+        calendar_obj = self._find_calendar_by_name()
+        data = {
+            'calendarId': calendar_obj['id'],
+            'eventId': event['body']['id']
+        }
 
-        if len(found) == 1:
-            self._update_gcal_event(found[0], event)
-        elif len(found) == 0:
-            self._create_gcal_event(event)
+        found = None
+        try:
+            found = self._service.events().get(**data).execute()
+        except HttpError as error:
+            if error.resp.status != 404:
+                raise error
+
+        if found:
+            self._update_gcal_event(found, event)
         else:
-            print "Found more than one event with summary '%s'. Neither updating nor creating a new event!" % event['body']['summary']
+            self._create_gcal_event(event)
 
     def handle_event(self, raw_ical):
         for event in self._extract_ical_data(raw_ical):
