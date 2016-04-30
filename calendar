@@ -197,13 +197,13 @@ class EMailParser:
         self._email = email.message_from_file(self._file)
         return self._email
 
-    def walk_calendar_events(self, callback):
+    def walk_calendar_events(self):
         for part in self._email.walk():
             if part.get_content_type() == 'text/calendar':
                 if part['Content-Transfer-Encoding'] == 'base64':
-                    callback(base64.b64decode(part.get_payload()))
+                    yield base64.b64decode(part.get_payload())
                 else:
-                    callback(part.get_payload())
+                    yield part.get_payload()
 
 
 
@@ -218,7 +218,6 @@ def cmdline_args():
 
 if __name__ == '__main__':
     args = cmdline_args()
-    cal = GCal(base_path=args.path)
 
     if args.file is not None and path.exists(args.file):
         mail = EMailParser(open(args.file, 'r'))
@@ -229,6 +228,11 @@ if __name__ == '__main__':
         mail = EMailParser(stdin)
 
     mail.parse()
-    mail.walk_calendar_events(cal.handle_event)
+    events = list(mail.walk_calendar_events())
+
+    if events:
+        cal = GCal(base_path=args.path)
+        for event in events:
+            cal.handle_event(event)
 
     exit(0)
