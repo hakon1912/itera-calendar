@@ -144,7 +144,7 @@ class GCal:
 
                 if isinstance(new_obj[key], dict):
                     merge_properties(new_obj[key], old_obj[key])
-                elif isinstance(new_obj[key], str) or isinstance(new_obj[key], unicode):
+                elif isinstance(new_obj[key], basestring):
                     new_obj[key] = old_obj[key]
 
             return new_obj
